@@ -38,11 +38,11 @@ export default {
     ctx.waitUntil(runHealthChecks(env));
   },
 
-  // 2. RapidAPI Gateway로서의 역할 (HTTP 요청 포워딩)
+  // 2. RapidAPI Gateway 및 정적 자원 서비스 로직
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 헬스체크 수동 실행 경로 (예: worker-url.com/health-check-now)
+    // [경로 1] 헬스체크 수동 실행
     if (url.pathname === "/health-check-now") {
       await runHealthChecks(env);
       return new Response(JSON.stringify({ message: "Manual health check triggered" }), {
@@ -50,55 +50,51 @@ export default {
       });
     }
 
-    // RapidAPI 요청 포워딩 로직
-    const GAS_URL = env.GAS_URL;
-    if (!GAS_URL) return new Response("GAS_URL not configured", { status: 500 });
+    // [경로 2] API 요청 (쿼리에 path가 있거나 POST 요청인 경우)
+    if (url.searchParams.has("path") || request.method === "POST") {
+      const GAS_URL = env.GAS_URL;
+      if (!GAS_URL) return new Response("GAS_URL not configured in Environment Variables", { status: 500 });
+      
+      const targetUrl = new URL(GAS_URL);
+      
+      // 요청 파라미터 복사 및 유저 정보 주입
+      const userId = request.headers.get("X-RapidAPI-User") || "LOCAL_USER";
+      const proxySecret = request.headers.get("X-RapidAPI-Proxy-Secret") || env.PROXY_SECRET;
 
-    const targetUrl = new URL(GAS_URL);
-    
-    // 1. RapidAPI 헤더 추출 (GAS에서 읽지 못하는 중요한 정보들)
-    const userId = request.headers.get("X-RapidAPI-User") || "LOCAL_USER";
-    const proxySecretHeader = request.headers.get("X-RapidAPI-Proxy-Secret");
-    const proxySecret = proxySecretHeader || env.PROXY_SECRET; // 환경변수 fallback
+      url.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
+      targetUrl.searchParams.set("user_id", userId);
+      if (proxySecret) targetUrl.searchParams.set("proxy_secret", proxySecret);
 
-    // 2. GAS로 전달할 쿼리 파라미터 구성
-    // 기존 쿼리 파라미터 복사 (path, limit 등)
-    url.searchParams.forEach((value, key) => {
-      targetUrl.searchParams.set(key, value);
-    });
-    
-    // 보안 및 유저 정보를 쿼리 파라미터로 강제 주입 (GAS가 읽을 수 있도록)
-    targetUrl.searchParams.set("user_id", userId);
-    if (proxySecret) {
-      targetUrl.searchParams.set("proxy_secret", proxySecret);
+      const forwardHeaders = new Headers();
+      forwardHeaders.set("Content-Type", "application/json");
+
+      let body = null;
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        body = await request.text();
+      }
+
+      try {
+        return await fetch(targetUrl.toString(), {
+          method: request.method,
+          headers: forwardHeaders,
+          body: body,
+          redirect: "follow"
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: "GAS Forwarding Failed", details: err.message }), {
+          status: 502,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
     }
 
-    // 3. 요청 생성 및 전달
-    const forwardMethod = request.method;
-    const forwardHeaders = new Headers();
-    forwardHeaders.set("Content-Type", "application/json");
-
-    let forwardBody = null;
-    if (forwardMethod !== "GET" && forwardMethod !== "HEAD") {
-      forwardBody = await request.text();
+    // [경로 3] 그 외의 경우 (Landing Page 등 정적 자원 서비스)
+    // Cloudflare "Workers with Assets" 기능 활용
+    if (env.ASSETS) {
+      return env.ASSETS.fetch(request);
     }
 
-    try {
-      const response = await fetch(targetUrl.toString(), {
-        method: forwardMethod,
-        headers: forwardHeaders,
-        body: forwardBody,
-        redirect: "follow" // GAS Web App은 302 리다이렉트를 사용함
-      });
-
-      // GAS의 응답을 그대로 클라이언트(RapidAPI)에게 반환
-      return response;
-    } catch (err) {
-      return new Response(JSON.stringify({ error: "Gateway Forwarding Error", details: err.message }), {
-        status: 502,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
+    return new Response("Not Found", { status: 404 });
   }
 };
 
