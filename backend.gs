@@ -64,7 +64,7 @@ function doGet(e) {
     const path = e.parameter.path || '';
 
     if (path === 'dashboard') return handleGetDashboard(userId, e.parameter);
-    if (path === 'status') return createResponse({ status: "UP", version: "1.1.0", timestamp: new Date().toISOString() });
+    if (path === 'status' || path === 'ping') return createResponse({ status: "UP", version: "1.2.0", message: "Connect to Central Hub Success", timestamp: new Date().toISOString() });
     if (path === 'stats') return handleGetStats(userId);
 
     return createResponse({
@@ -257,15 +257,24 @@ function handleDeleteLogs(data, userId) {
 
 function getOrCreateSheet(name) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error("Spreadsheet not found or script not bound to spreadsheet.");
+
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
-    sheet = ss.insertSheet(name);
-    if (name === "Users") {
-      sheet.appendRow(["UserID", "ChannelType", "WebhookURL", "AgentName", "CreatedAt", "UpdatedAt"]);
-    } else if (name === "ActivityLogs") {
-      sheet.appendRow(["UserID", "AgentID", "Status", "Message", "Timestamp"]);
-    } else if (name === "Heartbeats") {
-      sheet.appendRow(["UserID", "ServiceName", "Status", "Latency", "Timestamp"]);
+    try {
+      sheet = ss.insertSheet(name);
+      if (name === "Users") {
+        sheet.appendRow(["UserID", "ChannelType", "WebhookURL", "AgentName", "CreatedAt", "UpdatedAt"]);
+      } else if (name === "ActivityLogs") {
+        sheet.appendRow(["UserID", "AgentID", "Status", "Message", "Timestamp"]);
+      } else if (name === "Heartbeats") {
+        sheet.appendRow(["UserID", "ServiceName", "Status", "Latency", "Timestamp"]);
+      }
+    } catch (err) {
+      console.error("Failed to create sheet " + name + ": " + err.toString());
+      // 만약 동시 요청으로 이미 생성되었다면 다시 시도
+      sheet = ss.getSheetByName(name);
+      if (!sheet) throw err;
     }
   }
   return sheet;
