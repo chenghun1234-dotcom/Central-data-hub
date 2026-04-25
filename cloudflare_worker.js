@@ -1,66 +1,24 @@
 /**
- * Central Data Hub — Cloudflare Worker Monitoring Agent
- * Phase 4: 무료 서비스 모니터링 에이전트
- *
- * 배포 방법:
- * 1. https://dash.cloudflare.com/ 로 이동
- * 2. Workers & Pages > Create Worker > 코드 붙여넣기
- * 3. Settings > Variables에서 환경변수 설정:
- *    - GAS_URL: 배포된 GAS 웹앱 URL
- *    - HUB_USER_ID: 본인의 RapidAPI User ID
- *    - PROXY_SECRET: GAS Script Properties에 설정한 값과 동일
- * 4. Triggers > Cron Triggers > "*/5 * * * *" (5분마다 실행)
- *
- * 무료 티어: 일 100,000회 요청 / Cron 최대 5개
+ * Central Data Hub — All-in-One Integrated Worker
+ * 이 워커는 정적 페이지(UI) 서비스와 API 게이트웨이 역할을 동시에 수행합니다.
  */
 
-// ─── 모니터링할 서비스 목록 ───────────────────────────────────────────────────
-const SERVICES_TO_MONITOR = [
-  {
-    name: "Main API Server",
-    url: "https://your-api.vercel.app/health",   // ← 실제 URL로 변경
-    method: "GET",
-    expectedStatus: 200
-  },
-  {
-    name: "RapidAPI Endpoint",
-    url: "https://your-rapidapi-endpoint.com/status",  // ← 실제 URL로 변경
-    method: "GET",
-    expectedStatus: 200
-  },
-  // 추가 서비스는 여기에 계속 추가하세요
-];
-
-// ─── 메인 진입점 (Cron Trigger 및 API Gateway) ─────────────────────────────
 export default {
-  // 1. Cron Trigger가 이 함수를 실행 (5분마다 서비스 체크)
-  async scheduled(event, env, ctx) {
-    ctx.waitUntil(runHealthChecks(env));
-  },
-
-  // 2. RapidAPI Gateway 및 정적 자원 서비스 로직
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    
-    // [경로 1] 헬스체크 수동 실행
-    if (url.pathname === "/health-check-now") {
-      await runHealthChecks(env);
-      return new Response(JSON.stringify({ message: "Manual health check triggered" }), {
-        headers: { "Content-Type": "application/json" }
-      });
-    }
+    const pathParam = url.searchParams.get("path");
 
-    // [경로 2] API 요청 (쿼리에 path가 있거나 POST 요청인 경우)
-    if (url.searchParams.has("path") || request.method === "POST") {
+    // 1. API 요청 처리 (Gateway Mode)
+    // 쿼리에 path가 있거나 POST 요청인 경우
+    if (pathParam || request.method === "POST") {
       const GAS_URL = env.GAS_URL;
-      if (!GAS_URL) return new Response("GAS_URL not configured in Environment Variables", { status: 500 });
+      if (!GAS_URL) return new Response("GAS_URL 환경변수가 설정되지 않았습니다.", { status: 500 });
       
       const targetUrl = new URL(GAS_URL);
-      
-      // 요청 파라미터 복사 및 유저 정보 주입
       const userId = request.headers.get("X-RapidAPI-User") || "LOCAL_USER";
       const proxySecret = request.headers.get("X-RapidAPI-Proxy-Secret") || env.PROXY_SECRET;
 
+      // 파라미터 복사
       url.searchParams.forEach((v, k) => targetUrl.searchParams.set(k, v));
       targetUrl.searchParams.set("user_id", userId);
       if (proxySecret) targetUrl.searchParams.set("proxy_secret", proxySecret);
@@ -70,111 +28,87 @@ export default {
 
       let body = null;
       if (request.method !== "GET" && request.method !== "HEAD") {
-        body = await request.text();
+        try { body = await request.text(); } catch(e) {}
       }
 
       try {
-        return await fetch(targetUrl.toString(), {
+        const response = await fetch(targetUrl.toString(), {
           method: request.method,
           headers: forwardHeaders,
           body: body,
           redirect: "follow"
         });
+        
+        // CORS 헤더 추가 (브라우저 테스트용)
+        const newHeaders = new Headers(response.headers);
+        newHeaders.set("Access-Control-Allow-Origin", "*");
+        
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: newHeaders
+        });
       } catch (err) {
-        return new Response(JSON.stringify({ error: "GAS Forwarding Failed", details: err.message }), {
+        return new Response(JSON.stringify({ error: "Gateway Error", details: err.message }), {
           status: 502,
-          headers: { "Content-Type": "application/json" }
+          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
         });
       }
     }
 
-    // [경로 3] 그 외의 경우 (Landing Page 등 정적 자원 서비스)
-    // Cloudflare "Workers with Assets" 기능 활용
-    if (env.ASSETS) {
-      return env.ASSETS.fetch(request);
+    // 2. UI 서비스 (Embedded Landing Page)
+    // 메인 주소 접속 시 HTML을 직접 반환합니다.
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      return new Response(getHTMLContent(), {
+        headers: { "Content-Type": "text/html;charset=UTF-8" }
+      });
     }
 
     return new Response("Not Found", { status: 404 });
   }
 };
 
-// ─── 헬스 체크 실행 ─────────────────────────────────────────────────────────
-async function runHealthChecks(env) {
-  const GAS_URL = env.GAS_URL;
-  const HUB_USER_ID = env.HUB_USER_ID;
-  const PROXY_SECRET = env.PROXY_SECRET;
-
-  const results = await Promise.allSettled(
-    SERVICES_TO_MONITOR.map(service => checkService(service))
-  );
-
-  // 각 서비스 결과를 중앙 허브로 보고
-  for (let i = 0; i < results.length; i++) {
-    const service = SERVICES_TO_MONITOR[i];
-    let status, latency;
-
-    if (results[i].status === 'fulfilled') {
-      status = results[i].value.ok ? 'HEALTHY' : 'DEGRADED';
-      latency = results[i].value.latency;
-    } else {
-      status = 'DOWN';
-      latency = 0;
-    }
-
-    await reportToHub(GAS_URL, HUB_USER_ID, PROXY_SECRET, {
-      service_name: service.name,
-      status: status,
-      latency: latency
-    });
-  }
-}
-
-// ─── 개별 서비스 체크 ────────────────────────────────────────────────────────
-async function checkService(service) {
-  const startTime = Date.now();
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
-
-  try {
-    const response = await fetch(service.url, {
-      method: service.method || 'GET',
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    const latency = Date.now() - startTime;
-    return {
-      ok: response.status === (service.expectedStatus || 200),
-      latency: latency,
-      httpStatus: response.status
-    };
-  } catch (err) {
-    clearTimeout(timeout);
-    throw new Error(`${service.name} unreachable: ${err.message}`);
-  }
-}
-
-// ─── 중앙 허브로 결과 보고 ───────────────────────────────────────────────────
-async function reportToHub(gasUrl, userId, proxySecret, data) {
-  const payload = {
-    user_id: userId,
-    proxy_secret: proxySecret,
-    service_name: data.service_name,
-    status: data.status,
-    latency: data.latency
-  };
-
-  try {
-    const response = await fetch(`${gasUrl}?path=heartbeat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await response.json();
-    console.log(`[HUB REPORT] ${data.service_name}: ${data.status} | Latency: ${data.latency}ms | HUB: ${result.status}`);
-  } catch (err) {
-    console.error(`[HUB REPORT FAILED] ${data.service_name}: ${err.message}`);
-  }
+function getHTMLContent() {
+  return `
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Data Hub | Premium SSOT</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #00f2fe; --bg: #050505; --glass: rgba(255,255,255,0.03); --glass-border: rgba(255,255,255,0.1); }
+        body { background: var(--bg); color: #fff; font-family: 'Outfit', sans-serif; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; overflow: hidden; }
+        .glass-card { background: var(--glass); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); padding: 3rem; border-radius: 30px; text-align: center; max-width: 600px; box-shadow: 0 25px 50px rgba(0,0,0,0.5); }
+        h1 { font-size: 3.5rem; margin: 0; background: linear-gradient(to right, #00f2fe, #4facfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p { color: rgba(255,255,255,0.6); line-height: 1.6; font-size: 1.1rem; }
+        .status-badge { display: inline-block; padding: 6px 15px; background: rgba(0,242,254,0.1); color: var(--primary); border-radius: 20px; font-size: 0.8rem; font-weight: 700; margin-bottom: 1.5rem; border: 1px solid rgba(0,242,254,0.3); }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 2rem; }
+        .mini-card { background: rgba(255,255,255,0.02); padding: 1.5rem; border-radius: 20px; border: 1px solid var(--glass-border); text-align: left; }
+        .mini-card h3 { margin: 0 0 0.5rem 0; font-size: 1rem; color: var(--primary); }
+        .mini-card p { font-size: 0.85rem; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="glass-card">
+        <div class="status-badge">SYSTEM OPERATIONAL</div>
+        <h1>Central Data Hub</h1>
+        <p>Enterprise-grade Multi-tenant SaaS Gateway.<br>Operating cost: $0.00 / mo</p>
+        
+        <div class="grid">
+            <div class="mini-card">
+                <h3>SSOT Registry</h3>
+                <p>중앙 집중식 데이터 관리 및 에이전트 오케스트레이션.</p>
+            </div>
+            <div class="mini-card">
+                <h3>Edge Gateway</h3>
+                <p>Cloudflare Workers 기반의 고성능 트래픽 포워딩.</p>
+            </div>
+        </div>
+        <p style="margin-top: 2rem; font-size: 0.8rem; opacity: 0.4;">© 2024 Central Data Hub. Powered by Google Apps Script.</p>
+    </div>
+</body>
+</html>
+  `;
 }
