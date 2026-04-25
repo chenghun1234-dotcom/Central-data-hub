@@ -1,0 +1,226 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Central Data Hub API",
+    "description": "A zero-cost Single Source of Truth (SSOT) hub for multi-tenant agent orchestration and activity monitoring.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://script.google.com/macros/s/YOUR_GAS_DEPLOYMENT_ID/exec",
+      "description": "Production Server (GAS)"
+    }
+  ],
+  "paths": {
+    "/register-channel": {
+      "post": {
+        "summary": "Register a communication channel",
+        "description": "Registers a Discord or Slack webhook for real-time agent notifications.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "register-channel"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "channel_type": {
+                    "type": "string",
+                    "enum": ["discord", "slack"]
+                  },
+                  "webhook_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "agent_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "SUCCESS",
+                  "message": "Channel registered successfully"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/report-task": {
+      "post": {
+        "summary": "Report agent activity",
+        "description": "Logs an agent task status and triggers a notification to the registered channel.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "report-task"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agent_id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "example": {
+                  "status": "SUCCESS",
+                  "message": "Task reported"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/heartbeat": {
+      "post": {
+        "summary": "Report service heartbeats",
+        "description": "Monitoring endpoint for Cloudflare Workers or other health checkers.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "heartbeat"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "service_name": { "type": "string" },
+                  "status": { "type": "string", "enum": ["HEALTHY", "DEGRADED", "DOWN"] },
+                  "latency": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "example": { "status": "ACK", "received": "2023-10-27T10:00:00Z" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/status": {
+      "get": {
+        "summary": "API Health Check",
+        "description": "Basic health check to verify if the GAS backend is reachable.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API is online",
+            "content": {
+              "application/json": {
+                "example": { "status": "UP", "timestamp": "2023-10-27T10:00:00Z" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "summary": "Get activity dashboard",
+        "description": "Retrieves the recent activity logs for the authenticated user.",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "dashboard"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "example": {
+                  "userId": "User-123",
+                  "tasks": [
+                    {
+                      "agent_id": "Agent-01",
+                      "status": "SUCCESS",
+                      "message": "Task completed",
+                      "timestamp": "2023-10-27T10:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

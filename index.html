@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Data Hub | Premium Zero-Cost SSOT</title>
+    <meta name="description" content="Operational cost: 0. Enterprise-grade Multi-tenant SaaS hub built on Google Apps Script and Cloudflare Workers.">
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700;800&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <span class="badge">Enterprise Ready v1.2</span>
+            <h1>Central Data Hub</h1>
+            <p class="subtitle">모든 에이전트의 활동을 실시간으로 수집하고 통제하는 단일 진실 공급원(SSOT). 운영 비용은 영원히 <strong>0원</strong>입니다.</p>
+        </header>
+
+        <section class="grid">
+            <div class="card">
+                <h3>🚀 Rapid Dispatch</h3>
+                <p>GitHub Actions부터 로컬 에이전트까지, 모든 작업 결과를 API 하나로 통제하고 Discord/Slack으로 즉시 라우팅합니다.</p>
+            </div>
+            <div class="card">
+                <h3>🔐 Secured Gateway</h3>
+                <p>Cloudflare Edge Gateway를 통한 헤더 변조 방지 및 <code>PROXY_SECRET</code> 기반의 철저한 보안 통제 시스템을 제공합니다.</p>
+            </div>
+            <div class="card">
+                <h3>👥 Multi-Tenant SaaS</h3>
+                <p>RapidAPI <code>X-RapidAPI-User</code> 기반의 유저 격리 기술을 통해, 하나의 백엔드로 수만 명의 사용자에게 고유한 데이터를 제공합니다.</p>
+            </div>
+            <div class="card">
+                <h3>📊 Performance Audit</h3>
+                <p>매일 오전 9시, 전날의 에이전트 가동률과 성공률 정보를 자동으로 분석하여 일일 리포트를 발송합니다.</p>
+            </div>
+        </section>
+
+        <section class="architecture">
+            <h2>System Architecture</h2>
+            <p style="color: var(--text-dim); margin-top: 1rem;">Edge Computing + Cold Storage (Sheets) + Microservices</p>
+            
+            <div class="arch-flow">
+                <div class="node" style="background: rgba(255,255,255,0.1); border: 1px solid var(--glass-border);">User Request</div>
+                <div class="arrow">→</div>
+                <div class="node" style="background: #000; border: 1px solid #333;">RapidAPI</div>
+                <div class="arrow">→</div>
+                <div class="node" style="background: #f38020;">Cloudflare Edge</div>
+                <div class="arrow">→</div>
+                <div class="node" style="background: #4285f4;">GAS Backend</div>
+                <div class="arrow">→</div>
+                <div class="node" style="background: #34a853;">Google Sheets</div>
+            </div>
+        </section>
+
+        <section class="cta-section">
+            <h2>Ready to Deploy?</h2>
+            <p style="margin-bottom: 3rem; color: var(--text-dim); max-width: 600px; margin-left: auto; margin-right: auto;">
+                지금 바로 코드를 배포하고 상업용 API 비즈니스를 시작해 보세요. 인프라 관리는 구글과 클라우드플레어가 대신 합니다.
+            </p>
+            <div style="display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap;">
+                <a href="https://rapidapi.com" class="btn" target="_blank">RapidAPI Marketplace 전송</a>
+                <a href="backend.gs" class="btn" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid var(--glass-border);" download>Source Code (GAS)</a>
+            </div>
+        </section>
+
+        <footer style="margin-top: 8rem; text-align: center; color: var(--text-dim); padding-bottom: 6rem; border-top: 1px solid var(--glass-border); padding-top: 4rem;">
+            <p>© 2024 Central Data Hub. Architecture optimized for Zero-Cost Monetization.</p>
+            <p style="font-size: 0.8rem; margin-top: 1rem; opacity: 0.5;">Powered by Gemini 1.5 Pro & Cloudflare Workers</p>
+        </footer>
+    </div>
+</body>
+</html>
